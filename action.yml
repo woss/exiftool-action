@@ -1,0 +1,6 @@
+name: "exiftool-action"
+description:
+  "Exiftool github action. Adds exiftool to the PATH environment variable."
+runs:
+  using: "node20"
+  main: "dist/index.js"

@@ -1,0 +1,53 @@
+name: Continuous Integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test-typescript:
+    name: TypeScript Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        id: setup-pnpm
+        uses: pnpm/action-setup@v3
+
+      - name: Set node version
+        id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        id: install
+        run: pnpm install
+
+      - name: Check Format
+        id: pnpm-format-check
+        run: pnpm run format:check
+
+      - name: Lint
+        id: pnpm-lint
+        run: pnpm run lint
+
+      - name: Load Exiftool
+        id: exiftool
+        uses: ./
+
+      - name: Run Exiftool
+        run: exiftool -ver
