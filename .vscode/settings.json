@@ -1,0 +1,29 @@
+{
+  "workbench.sideBar.location": "right",
+  "files.associations": {
+    "*.json": "jsonc",
+    "package.json": "json",
+    ".sql": "sql",
+    ".devops/ci/*.gitlab-ci.yml": "yaml",
+    ".tmux.conf.local": "properties"
+  },
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit"
+  },
+  "editor.formatOnSave": true,
+  "eslint.enable": true,
+  "eslint.format.enable": true,
+  "eslint.useESLintClass": true,
+  "zenMode.fullScreen": false,
+  "git.autofetch": true,
+  "scm.defaultViewMode": "tree",
+  "terminal.integrated.defaultProfile.linux": "zsh",
+  "tailwindCSS.experimental.classRegex": ["[cC]lass=['\"](.*)['|\"]"],
+  "html.customData": ["./ui/app/node_modules/vidstack/vscode.html-data.json"],
+  // Controls the rendering size of tabs in characters. Accepted values: "auto", 2, 4, 6, etc. If set to "auto", the value will be guessed when a file is opened.
+  "editor.tabSize": 2,
+  // Controls after how many characters the editor will wrap to the next line. Setting this to 0 turns on viewport width wrapping
+  // When enabled, will trim trailing whitespace when you save a file.
+  "files.trimTrailingWhitespace": true,
+  "workbench.colorTheme": "Monokai"
+}

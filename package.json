@@ -1,0 +1,39 @@
+{
+  "name": "exiftool-action",
+  "version": "1.0.0",
+  "description": "Adds exiftool to the path for use in GitHub Actions",
+  "main": "index.js",
+  "scripts": {
+    "clean": "rimraf dist pnpm-lock.yaml node_modules",
+    "preinstall": "npx only-allow pnpm",
+    "bundle": "pnpm run format:write && pnpm run package",
+    "format:write": "prettier --cache --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint --cache --cache-strategy content --report-unused-disable-directives .",
+    "package": "pnpm ncc build src/index.ts -o dist --source-map --license licenses.txt",
+    "package:watch": "pnpm run package --watch",
+    "prepublishOnly": "pnpm run clean && pnpm install && pnpm run build",
+    "preflight": "pnpm install && pnpm run format:write && pnpm run lint && pnpm run test && pnpm run package"
+  },
+  "keywords": [],
+  "author": "daniel maricic <daniel@woss.io>",
+  "license": "GPL-3.0-only",
+  "packageManager": "pnpm@9.0.6",
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.2",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "@vercel/ncc": "^0.38.1",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "prettier": "^3.3.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "rimraf": "5.0.7"
+  }
+}
