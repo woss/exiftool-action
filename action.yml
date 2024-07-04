@@ -1,6 +1,10 @@
 name: "exiftool-action"
+author: "daniel maricic aka woss"
 description:
   "Exiftool github action. Adds exiftool to the PATH environment variable."
+branding:
+  icon: "code"
+  color: "green"
 runs:
   using: "node20"
   main: "dist/index.js"
