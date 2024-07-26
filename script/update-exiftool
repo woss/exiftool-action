@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -ex
+
 rm -rf exiftool_git
 git clone https://github.com/exiftool/exiftool.git exiftool_git
 rm -rf exiftool_git/.git
@@ -14,3 +16,9 @@ cp -R ./exiftool_git/lib ./exiftool_git/exiftool ./exiftool
 chmod +x ./exiftool/exiftool
 
 rm -rf exiftool_git
+
+echo "Exiftool updated successfully!"
+EXIFTOOL_VERSION=$(./exiftool/exiftool -ver)
+
+git branch "v${EXIFTOOL_VERSION}" main
+git checkout "v${EXIFTOOL_VERSION}"
