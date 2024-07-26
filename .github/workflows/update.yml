@@ -1,0 +1,16 @@
+name: Update Version
+on: workflow_dispatch
+jobs:
+  test-typescript:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Clone exiftool/master
+        run: ./script/update-exiftool
+
+      - name: Exiftool version
+        run: ./exiftool/exiftool -ver
