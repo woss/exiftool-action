@@ -48,7 +48,7 @@ use Image::ExifTool qw(:DataAccess :Utils);
 use Image::ExifTool::Exif;
 use Image::ExifTool::GPS;
 
-$VERSION = '2.98';
+$VERSION = '3.04';
 
 sub ProcessMOV($$;$);
 sub ProcessKeys($$$);
@@ -901,6 +901,7 @@ my %userDefined = (
         Writable => 1,
     },
     # '35AX'? - seen "AT" (Yada RoadCam Pro 4K dashcam)
+    cust => 'CustomInfo', # 70mai A810
 );
 
 # stuff seen in 'skip' atom (70mai Pro Plus+ MP4 videos)
@@ -935,6 +936,7 @@ my %userDefined = (
     2 => {
         Name => 'CompatibleBrands',
         Format => 'undef[$size-8]',
+        List => 1, # (for documentation only)
         # ignore any entry with a null, and return others as a list
         ValueConv => 'my @a=($val=~/.{4}/sg); @a=grep(!/\0/,@a); \@a',
     },
@@ -2551,7 +2553,7 @@ my %userDefined = (
     TTID => { Name => 'TomTomID', ValueConv => 'unpack("x4H*",$val)' },
     TTVI => { Name => 'TomTomVI', Format => 'int32u', Unknown => 1 }, # seen: "0 1 61 508 508"
     # TTVD seen: "normal 720p 60fps 60fps 16/9 wide 1x"
-    TTVD => { Name => 'TomTomVD', ValueConv => 'my @a = ($val =~ /[\x20-\x7f]+/g); "@a"' },
+    TTVD => { Name => 'TomTomVD', ValueConv => 'my @a = ($val =~ /[\x20-\x7f]+/g); "@a"', List => 1 },
 );
 
 # User-specific media data atoms (ref 11)
@@ -3350,6 +3352,7 @@ my %userDefined = (
         PrintConv => '"Track $val"',
     },
     # cdep (Structural Dependency QT tag?)
+    # fall - ? int32u, seen: 2
 );
 
 # track aperture mode dimensions atoms
@@ -6552,7 +6555,7 @@ my %userDefined = (
     PROCESS_PROC => \&ProcessKeys,
     WRITE_PROC => \&WriteKeys,
     CHECK_PROC => \&CheckQTValue,
-    VARS => { LONG_TAGS => 7 },
+    VARS => { LONG_TAGS => 8 },
     WRITABLE => 1,
     # (not PREFERRED when writing)
     GROUPS => { 1 => 'Keys' },
@@ -6606,6 +6609,8 @@ my %userDefined = (
         PrintConv => '$val * 1e6 . " microseconds"',
         PrintConvInv => '$val =~ s/ .*//; $val * 1e-6',
     },
+  # 'camera.focal_length.35mm_equivalent' - not top level (written to Keys in video track)
+  # 'camera.lens_model'                   - not top level (written to Keys in video track)
     'location.ISO6709' => {
         Name => 'GPSCoordinates',
         Groups => { 2 => 'Location' },
@@ -6668,7 +6673,12 @@ my %userDefined = (
 #
     'com.apple.photos.captureMode' => 'CaptureMode',
     'com.android.version' => 'AndroidVersion',
-    'com.android.capture.fps' => 'AndroidCaptureFPS',
+    'com.android.capture.fps' => { Name  => 'AndroidCaptureFPS', Writable => 'float' },
+    'com.android.manufacturer' => 'AndroidMake',
+    'com.android.model' => 'AndroidModel',
+    'com.xiaomi.preview_video_cover' => { Name => 'XiaomiPreviewVideoCover', Writable => 'int32s' },
+    'xiaomi.exifInfo.videoinfo' => 'XiaomiExifInfo',
+    'com.xiaomi.hdr10' => { Name => 'XiaomiHDR10', Writable => 'int32s' },
 #
 # also seen
 #
@@ -6735,6 +6745,13 @@ my %userDefined = (
         Groups => { 2 => 'Time' },
         Avoid => 1,
         %iso8601Date,
+    },
+    # (mdta)com.apple.quicktime.scene-illuminance
+    'scene-illuminance' => {
+        Name => 'SceneIlluminance',
+        Notes => 'milli-lux',
+        ValueConv => 'unpack("N", $val)',
+        Writable => 0, # (don't make this writable because it is found in timed metadata)
     },
 #
 # seen in Apple ProRes RAW file
@@ -7385,6 +7402,7 @@ my %userDefined = (
     # alac - 28 bytes
     # adrm - AAX DRM atom? 148 bytes
     # aabd - AAX unknown 17kB (contains 'aavd' strings)
+    # dapa - ? 203 bytes
 );
 
 # AMR decode config box (ref 3)
@@ -9144,7 +9162,7 @@ sub HandleItemInfo($)
             $et->ProcessDirectory(\%dirInfo, $subTable, $proc);
             delete $$et{DOC_NUM};
         }
-        $raf->Seek($curPos, 0);     # seek back to original position
+        $raf->Seek($curPos, 0) or $et->Warn('Seek error'), last;     # seek back to original position
         pop @{$$et{PATH}};
     }
     # process the item properties now that we should know their associations and document numbers
@@ -9484,7 +9502,7 @@ sub ProcessKeys($$$)
             $$newInfo{KeysID} = $tag;  # save original ID for use in family 7 group name
             AddTagToTable($itemList, $id, $newInfo);
             $msg or $msg = '';
-            $out and print $out "$$et{INDENT}Added ItemList Tag $id = ($ns) $tag$msg\n";
+            $out and print $out "$$et{INDENT}Added ItemList Tag $id = ($ns) $full$msg\n";
         }
         $pos += $len;
         ++$index;
@@ -9521,7 +9539,7 @@ sub ProcessMOV($$;$)
     my $dirID = $$dirInfo{DirID} || '';
     my $charsetQuickTime = $et->Options('CharsetQuickTime');
     my ($buff, $tag, $size, $track, $isUserData, %triplet, $doDefaultLang, $index);
-    my ($dirEnd, $unkOpt, %saveOptions, $atomCount, $warnStr);
+    my ($dirEnd, $unkOpt, %saveOptions, $atomCount, $warnStr, $trailer);
 
     my $topLevel = not $$et{InQuickTime};
     $$et{InQuickTime} = 1;
@@ -9550,6 +9568,17 @@ sub ProcessMOV($$;$)
         $tagTablePtr = GetTagTable('Image::ExifTool::QuickTime::Main');
     }
     ($size, $tag) = unpack('Na4', $buff);
+    my $fast = $$et{OPTIONS}{FastScan} || 0;
+    # check for Insta360 trailer
+    if ($topLevel and not $fast) {
+        my $pos = $raf->Tell();
+        if ($raf->Seek(-40, 2) and $raf->Read($buff, 40) == 40 and
+            substr($buff, 8) eq '8db42d694ccc418790edff439fe026bf')
+        {
+            $trailer = [ 'Insta360', $raf->Tell() - unpack('V',$buff) ];
+        }
+        $raf->Seek($pos,0) or return 0;
+    }
     if ($dataPt) {
         $verbose and $et->VerboseDir($$dirInfo{DirName});
     } else {
@@ -9559,7 +9588,7 @@ sub ProcessMOV($$;$)
         if ($tag eq 'ftyp' and $size >= 12) {
             # read ftyp atom to see what type of file this is
             if ($raf->Read($buff, $size-8) == $size-8) {
-                $raf->Seek(-($size-8), 1);
+                $raf->Seek(-($size-8), 1) or $et->Warn('Seek error'), return 0;
                 my $type = substr($buff, 0, 4);
                 $$et{save_ftyp} = $type;
                 # see if we know the extension for this file type
@@ -9588,7 +9617,6 @@ sub ProcessMOV($$;$)
         # have XMP take priority except for HEIC
         $$et{PRIORITY_DIR} = 'XMP' unless $fileType and $fileType eq 'HEIC';
     }
-    my $fast = $$et{OPTIONS}{FastScan} || 0;
     $$raf{NoBuffer} = 1 if $fast;   # disable buffering in FastScan mode
 
     my $ee = $$et{OPTIONS}{ExtractEmbedded};
@@ -9612,7 +9640,7 @@ sub ProcessMOV($$;$)
                     # a zero size isn't legal for contained atoms, but Canon uses it to
                     # terminate the CNTH atom (eg. CanonEOS100D.mov), so tolerate it here
                     my $pos = $raf->Tell() - 4;
-                    $raf->Seek(0,2);
+                    $raf->Seek(0,2) or $et->Warn('Seek error'), return 0;
                     my $str = $$dirInfo{DirName} . ' with ' . ($raf->Tell() - $pos) . ' bytes';
                     $et->VPrint(0,"$$et{INDENT}\[Terminator found in $str remaining]");
                 } else {
@@ -9621,7 +9649,7 @@ sub ProcessMOV($$;$)
                     if ($$tagTablePtr{"$tag-size"}) {
                         my $pos = $raf->Tell();
                         unless ($fast) {
-                            $raf->Seek(0, 2);
+                            $raf->Seek(0, 2) or $et->Warn('Seek error'), return 0;
                             $et->HandleTag($tagTablePtr, "$tag-size", $raf->Tell() - $pos);
                         }
                         $et->HandleTag($tagTablePtr, "$tag-offset", $pos) if $$tagTablePtr{"$tag-offset"};
@@ -9737,7 +9765,7 @@ sub ProcessMOV($$;$)
         if ($size > 0x2000000) {    # start to get worried above 32 MiB
             # check for RIFF trailer (written by Auto-Vox dashcam)
             if ($buff =~ /^(gpsa|gps0|gsen|gsea)...\0/s) { # (yet seen only gpsa as first record)
-                $et->VPrint(0, "Found RIFF trailer");
+                $et->VPrint(0, sprintf("Found RIFF trailer at offset 0x%x",$lastPos));
                 if ($et->Options('ExtractEmbedded')) {
                     $raf->Seek(-8, 1) or last;  # seek back to start of trailer
                     my $tbl = GetTagTable('Image::ExifTool::QuickTime::Stream');
@@ -9745,6 +9773,11 @@ sub ProcessMOV($$;$)
                 } else {
                     EEWarn($et);
                 }
+                last;
+            } elsif ($buff eq 'CCCCCCCC') {
+                $et->VPrint(0, sprintf("Found Kenwood trailer at offset 0x%x",$lastPos));
+                my $tbl = GetTagTable('Image::ExifTool::QuickTime::Stream');
+                ProcessKenwoodTrailer($et, { RAF => $raf }, $tbl);
                 last;
             }
             $ignore = 1;
@@ -10124,6 +10157,10 @@ ItemID:         foreach $id (reverse sort { $a <=> $b } keys %$items) {
         $dataPos += $size + 8;  # point to start of next atom data
         last if $dirEnd and $dataPos >= $dirEnd; # (note: ignores last value if 0 bytes)
         $lastPos = $raf->Tell() + $dirBase;
+        if ($trailer and $lastPos >= $$trailer[1]) {
+            $et->Warn(sprintf('%s trailer at offset 0x%x', @$trailer), 1);
+            last;
+        }
         $raf->Read($buff, 8) == 8 or last;
         $lastTag = $tag if $$tagTablePtr{$tag} and $tag ne 'free'; # (Insta360 sometimes puts free block before trailer)
         ($size, $tag) = unpack('Na4', $buff);
@@ -10132,14 +10169,10 @@ ItemID:         foreach $id (reverse sort { $a <=> $b } keys %$items) {
     if ($warnStr) {
         # assume this is an unknown trailer if it comes immediately after
         # mdat or moov and has a tag name we don't recognize
-        if (($lastTag eq 'mdat' or $lastTag eq 'moov') and (not $$tagTablePtr{$tag} or
-            ref $$tagTablePtr{$tag} eq 'HASH' and $$tagTablePtr{$tag}{Unknown}))
+        if (($lastTag eq 'mdat' or $lastTag eq 'moov') and
+            (not $$tagTablePtr{$tag} or ref $$tagTablePtr{$tag} eq 'HASH' and $$tagTablePtr{$tag}{Unknown}))
         {
-            if ($size == 0x1000000 - 8 and $tag =~ /^(\x94\xc0\x7e\0|\0\x02\0\0)/) {
-                $et->Warn(sprintf('Insta360 trailer at offset 0x%x', $lastPos), 1);
-            } else {
-                $et->Warn('Unknown trailer with '.lcfirst($warnStr));
-            }
+            $et->Warn('Unknown trailer with '.lcfirst($warnStr));
         } else {
             $et->Warn($warnStr);
         }
@@ -10166,7 +10199,10 @@ QTLang: foreach $tag (@{$$et{QTLang}}) {
             for ($i=0, $key=$name; $$infoHash{$key}; ++$i, $key="$name ($i)") {
                 next QTLang if $et->GetGroup($key, 0) eq 'QuickTime';
             }
-            $et->FoundTag($tagInfo, $$et{VALUE}{$tag});
+            $key = $et->FoundTag($tagInfo, $$et{VALUE}{$tag});
+            # copy extra tag information (groups, etc) to the synthetic tag
+            $$et{TAG_EXTRA}{$key} = $$et{TAG_EXTRA}{$tag};
+            $et->VPrint(0, "(synthesized default-language tag for QuickTime:$$tagInfo{Name})");
         }
         delete $$et{QTLang};
     }

@@ -19,7 +19,6 @@ use Image::ExifTool::Fixup;
 
 sub AssembleRational($$@);
 sub LastInList($);
-sub CreateDirectory($$);
 sub NextFreeTagKey($$);
 sub RemoveNewValueHash($$$);
 sub RemoveNewValuesForGroup($$);
@@ -296,10 +295,11 @@ my %ignorePrintConv = map { $_ => 1 } qw(OTHER BITMASK Notes);
 #           CreateGroups - hash of all family 0 group names where tag may be created
 #           WriteGroup - group name where information is being written (correct case)
 #           WantGroup - group name as specified in call to function (case insensitive)
-#           Next - pointer to next new value hash (if more than one)
+#           Next - pointer to next new value hash (if more than one for this tag)
 #           NoReplace - set if value was created with Replace=0
 #           AddBefore - number of list items added by a subsequent Replace=0 call
-#           IsNVH - Flag indicating this is a new value hash
+#           IsNVH - flag indicating this is a new value hash
+#           Order - counter to indicate the order that new value hashes were created
 #           Shift - shift value
 #           Save - counter used by SaveNewValues()/RestoreNewValues()
 #           MAKER_NOTE_FIXUP - pointer to fixup if necessary for a maker note value
@@ -318,7 +318,7 @@ sub SetNewValue($;$$%)
 
     unless (defined $tag) {
         delete $$self{NEW_VALUE};
-        $$self{SAVE_COUNT} = 0;
+        $$self{SAVE_COUNT} = $$self{NV_COUNT} = 0;
         $$self{DEL_GROUP} = { };
         return 1;
     }
@@ -1390,8 +1390,16 @@ sub SetNewValuesFromFile($$;@)
     return $info if $$info{Error} and $$info{Error} eq 'Error opening file';
     delete $$srcExifTool{VALUE}{Error}; # delete so we can check this later
 
-    # sort tags in reverse order so we get priority tag last
-    my @tags = reverse sort keys %$info;
+    # sort tags in file order with priority tags last
+    my (@tags, @prio);
+    foreach (sort { $$srcExifTool{FILE_ORDER}{$a} <=> $$srcExifTool{FILE_ORDER}{$b} } keys %$info) {
+        if (/ /) {
+            push @tags, $_;
+        } else {
+            push @prio, $_;
+        }
+    }
+    push @tags, @prio;
 #
 # simply transfer all tags from source image if no tags specified
 #
@@ -2085,9 +2093,10 @@ sub SetFileName($$;$$$)
         return 1;
     }
     # create directory for new file if necessary
-    my $result;
-    if (($result = $self->CreateDirectory($newName)) != 0) {
-        if ($result < 0) {
+    my $err = $self->CreateDirectory($newName);
+    if (defined $err) {
+        if ($err) {
+            $self->Warn($err) unless $err =~ /^Error creating/;
             $self->Warn("Error creating directory for '${newName}'");
             return -1;
         }
@@ -2835,7 +2844,10 @@ sub GetAllGroups($;$)
     $family == 3 and return('Doc#', 'Main');
     $family == 4 and return('Copy#');
     $family == 5 and return('[too many possibilities to list]');
-    $family == 6 and return(@Image::ExifTool::Exif::formatName[1..$#Image::ExifTool::Exif::formatName]);
+    if ($family == 6) {
+        my $fn = \%Image::ExifTool::Exif::formatNumber;
+        return(sort { $$fn{$a} <=> $$fn{$b} } keys %$fn);
+    }
     $family == 8 and return('File#');
 
     LoadAllTables();    # first load all our tables
@@ -3552,55 +3564,6 @@ sub IsRawType($)
 }
 
 #------------------------------------------------------------------------------
-# Create directory for specified file
-# Inputs: 0) ExifTool ref, 1) complete file name including path
-# Returns: 1 = directory created, 0 = nothing done, -1 = error
-my $k32CreateDir;
-sub CreateDirectory($$)
-{
-    local $_;
-    my ($self, $file) = @_;
-    my $rtnVal = 0;
-    my $enc = $$self{OPTIONS}{CharsetFileName};
-    my $dir;
-    ($dir = $file) =~ s/[^\/]*$//;  # remove filename from path specification
-    # recode as UTF-8 if necessary
-    if ($dir and not $self->IsDirectory($dir)) {
-        my @parts = split /\//, $dir;
-        $dir = '';
-        foreach (@parts) {
-            $dir .= $_;
-            if (length $dir and not $self->IsDirectory($dir)) {
-                # create directory since it doesn't exist
-                my $d2 = $dir; # (must make a copy in case EncodeFileName recodes it)
-                if ($self->EncodeFileName($d2)) {
-                    # handle Windows Unicode directory names
-                    unless (eval { require Win32::API }) {
-                        $self->Warn('Install Win32::API to create directories with Unicode names');
-                        return -1;
-                    }
-                    unless ($k32CreateDir) {
-                        return -1 if defined $k32CreateDir;
-                        $k32CreateDir = Win32::API->new('KERNEL32', 'CreateDirectoryW', 'PP', 'I');
-                        unless ($k32CreateDir) {
-                            $self->Warn('Error calling Win32::API::CreateDirectoryW');
-                            $k32CreateDir = 0;
-                            return -1;
-                        }
-                    }
-                    $k32CreateDir->Call($d2, 0) or return -1;
-                } else {
-                    mkdir($d2, 0777) or return -1;
-                }
-                $rtnVal = 1;
-            }
-            $dir .= '/';
-        }
-    }
-    return $rtnVal;
-}
-
-#------------------------------------------------------------------------------
 # Copy file attributes from one file to another
 # Inputs: 0) ExifTool ref, 1) source file name, 2) destination file name
 # Notes: eventually add support for extended attributes?
@@ -3942,6 +3905,7 @@ sub GetNewValueHash($$;$$$$)
             TagInfo => $tagInfo,
             WriteGroup => $writeGroup,
             IsNVH => 1, # set flag so we can recognize a new value hash
+            Order => $$self{NV_COUNT}++,
         };
         # add entry to our NEW_VALUE hash
         if ($$self{NEW_VALUE}{$tagInfo}) {
@@ -4069,7 +4033,7 @@ sub RemoveNewValuesForGroup($$)
 #------------------------------------------------------------------------------
 # Get list of tagInfo hashes for all new data
 # Inputs: 0) ExifTool object reference, 1) optional tag table pointer
-# Returns: list of tagInfo hashes
+# Returns: list of tagInfo hashes in no particular order
 sub GetNewTagInfoList($;$)
 {
     my ($self, $tagTablePtr) = @_;

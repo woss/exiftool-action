@@ -29,7 +29,7 @@ use vars qw($VERSION $RELEASE @ISA @EXPORT_OK %EXPORT_TAGS $AUTOLOAD @fileTypes
             %jpegMarker %specialTags %fileTypeLookup $testLen $exeDir
             %static_vars $advFmtSelf);
 
-$VERSION = '12.89';
+$VERSION = '12.99';
 $RELEASE = '';
 @ISA = qw(Exporter);
 %EXPORT_TAGS = (
@@ -37,7 +37,7 @@ $RELEASE = '';
     Public => [qw(
         ImageInfo AvailableOptions GetTagName GetShortcuts GetAllTags
         GetWritableTags GetAllGroups GetDeleteGroups GetFileType CanWrite
-        CanCreate AddUserDefinedTags
+        CanCreate AddUserDefinedTags OrderedKeys
     )],
     # exports not part of the public API, but used by ExifTool modules:
     DataAccess => [qw(
@@ -1466,12 +1466,12 @@ my %systemTagsNotes = (
         PrintConv => sub {
             my ($mask, $val) = (0400, oct(shift));
             my %types = (
-                0010000 => 'p',
-                0020000 => 'c',
-                0040000 => 'd',
-                0060000 => 'b',
-                0120000 => 'l',
-                0140000 => 's',
+                0010000 => 'p', # FIFO
+                0020000 => 'c', # character special file
+                0040000 => 'd', # directory
+                0060000 => 'b', # block special file
+                0120000 => 'l', # sym link
+                0140000 => 's', # socket link
             );
             my $str = $types{$val & 0170000} || '-';
             while ($mask) {
@@ -1873,9 +1873,10 @@ my %systemTagsNotes = (
             this write-only tag is used to define the GPS track log data or track log
             file name.  Currently supported track log formats are GPX, NMEA RMC/GGA/GLL,
             KML, IGC, Garmin XML and TCX, Magellan PMGNTRK, Honeywell PTNTHPR, Winplus
-            Beacon text, and Bramor gEO log files.  May be set to the special value of
-            "DATETIMEONLY" (all caps) to set GPS date/time tags if no input track points
-            are available.  See L<geotag.html|../geotag.html> for details
+            Beacon text, Bramor gEO, Google Takeout JSON, and CSV log files.  May be set
+            to the special value of "DATETIMEONLY" (all caps) to set GPS date/time tags
+            if no input track points are available.  See L<geotag.html|../geotag.html>
+            for details
         },
         DelCheck => q{
             require Image::ExifTool::Geotag;
@@ -2291,6 +2292,7 @@ sub new
     $$self{PATH} = [ ];         # (this too)
     $$self{DEL_GROUP} = { };    # lookup for groups to delete when writing
     $$self{SAVE_COUNT} = 0;     # count calls to SaveNewValues()
+    $$self{NV_COUNT} = 0;       # count of NEW_VALUE entries
     $$self{FILE_SEQUENCE} = 0;  # sequence number for files when reading
     $$self{FILES_WRITTEN} = 0;  # count of files successfully written
     $$self{INDENT2} = '';       # indentation of verbose messages from SetNewValue
@@ -2516,6 +2518,8 @@ sub Options($$;@)
             # set Compact and XMPShorthand options, preserving backward compatibility
             my ($p, %compact);
             foreach $p ('Compact','XMPShorthand') {
+                # (allow setting from a HASH (undocumented)
+                ref $newVal eq 'HASH' and %compact = %{$newVal}, next;
                 my $val = $param eq $p ? $newVal : $$options{Compact}{$p};
                 if (defined $val) {
                     my @v = ($val =~ /\w+/g);
@@ -4194,6 +4198,16 @@ sub CanCreate($)
     return 0;
 }
 
+#------------------------------------------------------------------------------
+# Return list of ordered keys if available, otherwise just sort alphabetically
+# Inputs: 0) hash ref
+# Returns: List of ordered/sorted keys
+sub OrderedKeys($)
+{
+    my $hash = shift;
+    return $$hash{_ordered_keys_} ? @{$$hash{_ordered_keys_}} : sort keys %$hash;
+}
+
 #==============================================================================
 # Functions below this are not part of the public API
 
@@ -4732,6 +4746,56 @@ sub IsDirectory($$)
         return -d $file;
     }
     return 0;
+}
+
+#------------------------------------------------------------------------------
+# Create directory for specified file
+# Inputs: 0) ExifTool ref, 1) complete file name including path
+# Returns: '' = directory created, undef = nothing done, otherwise error string
+my $k32CreateDir;
+sub CreateDirectory($$)
+{
+    local $_;
+    my ($self, $file) = @_;
+    my ($err, $dir);
+    ($dir = $file) =~ s/[^\/]*$//;  # remove filename from path specification
+    if ($dir and not $self->IsDirectory($dir)) {
+        my @parts = split /\//, $dir;
+        $dir = '';
+        foreach (@parts) {
+            $dir .= $_;
+            if (length and not $self->IsDirectory($dir) and
+                # don't try to create a network drive root directory
+                not (IsPC() and $dir =~ m{^//[^/]*$}))
+            {
+                my $success;
+                # create directory since it doesn't exist
+                my $d2 = $dir; # (must make a copy in case EncodeFileName recodes it)
+                if ($self->EncodeFileName($d2)) {
+                    # handle Windows Unicode directory names
+                    unless (eval { require Win32::API }) {
+                        $err = 'Install Win32::API to create directories with Unicode names';
+                        last;
+                    }
+                    unless (defined $k32CreateDir) {
+                        $k32CreateDir = Win32::API->new('KERNEL32', 'CreateDirectoryW', 'PP', 'I');
+                        unless ($k32CreateDir) {
+                            $k32CreateDir = 0;
+                            # give this error once, then just "Error creating" for subsequent attempts
+                            return 'Error accessing Win32::API::CreateDirectoryW';
+                        }
+                    }
+                    $success = $k32CreateDir->Call($d2, 0) if $k32CreateDir;
+                } else {
+                    $success = mkdir($d2, 0777);
+                }
+                $success or $err = "Error creating directory $dir", last;
+                $err = '';
+            }
+            $dir .= '/';
+        }
+    }
+    return $err;
 }
 
 #------------------------------------------------------------------------------
@@ -5646,6 +5710,17 @@ sub SetupTagTable($)
             $$tagInfo{Index} = $index++;
         }
     }
+}
+
+#------------------------------------------------------------------------------
+# Is this a PC system?
+# Returns: true for PC systems
+# uses lookup for O/S names which may use a backslash as a directory separator
+# (ref File::Spec of PathTools-3.2701)
+my %isPC = (MSWin32 => 1, os2 => 1, dos => 1, NetWare => 1, symbian => 1, cygwin => 1);
+sub IsPC()
+{
+    return $isPC{$^O};
 }
 
 #------------------------------------------------------------------------------
@@ -7228,7 +7303,10 @@ sub ProcessJPEG($$;$)
             last;   # all done parsing file
         } elsif (defined $markerLenBytes{$marker}) {
             # handle other stand-alone markers and segments we skipped over
-            $verbose and $marker and print $out "${indent}JPEG $markerName\n";
+            if ($verbose and $marker) {
+                next if $verbose < 4 and ($marker & 0xf8) == 0xd0;
+                print $out "${indent}JPEG $markerName\n";
+            }
             next;
         } elsif ($marker == 0xdb and length($$segDataPt) and    # DQT
             # save the DQT data only if JPEGDigest has been requested
@@ -7839,8 +7917,17 @@ sub ProcessJPEG($$;$)
                 my $seq = Get32u($segDataPt, 4);
                 my $len = Get32u($segDataPt, 8);
                 my $type = substr($$segDataPt, 12, 4);
+                # a Microsoft bug writes $len and $type incorrectly as little-endian
+                if ($type eq 'bmuj') {
+                    $self->WarnOnce('Wrong byte order in C2PA APP11 JUMBF header');
+                    $type = 'jumb';
+                    $len = unpack('x8V', $$segDataPt);
+                    # fix the header
+                    substr($$segDataPt, 8, 8) = Set32u($len) . $type;
+                }
                 my $hdrLen;
                 if ($len == 1 and length($$segDataPt) >= 24) {
+                    # (haven't seen this with the Microsoft bug)
                     $len = Get64u($$segDataPt, 16);
                     $hdrLen = 16;
                 } else {
