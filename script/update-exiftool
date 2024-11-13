@@ -14,3 +14,9 @@ cp -R ./exiftool_git/lib ./exiftool_git/exiftool ./exiftool
 chmod +x ./exiftool/exiftool
 
 rm -rf exiftool_git
+VERSION=$(./exiftool/exiftool -ver)
+echo "Version: ${VERSION}"
+git checkout -b "v${VERSION}"
+git add exiftool
+git commit -m "Update exiftool to version ${VERSION}"
+git push origin "v${VERSION}"
