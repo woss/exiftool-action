@@ -19,4 +19,4 @@ echo "Version: ${VERSION}"
 git checkout -b "v${VERSION}"
 git add exiftool
 git commit -m "Update exiftool to version ${VERSION}"
-git push origin "v${VERSION}"
+git push --set-upstream origin "v${VERSION}"
