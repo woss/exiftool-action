@@ -35,7 +35,7 @@ use Image::ExifTool::Sony;
 use Image::ExifTool::Validate;
 use Image::ExifTool::MacOS;
 
-$VERSION = '3.58';
+$VERSION = '3.59';
 @ISA = qw(Exporter);
 
 sub NumbersFirst($$);
@@ -866,10 +866,16 @@ sub new
         }
         $noID = 1 if $isXMP or $short =~ /^(Shortcuts|ASF.*)$/ or $$vars{NO_ID};
         $hexID = $$vars{HEX_ID};
+        if ($$table{WRITE_PROC} and $$table{WRITE_PROC} eq \&Image::ExifTool::WriteBinaryData
+            and not $$table{CHECK_PROC})
+        {
+            warn("Binary table $tableName doesn't have a CHECK_PROC\n");
+        }
         my $processBinaryData = ($$table{PROCESS_PROC} and (
             $$table{PROCESS_PROC} eq \&Image::ExifTool::ProcessBinaryData or
             $$table{PROCESS_PROC} eq \&Image::ExifTool::Nikon::ProcessNikonEncrypted or
-            $$table{PROCESS_PROC} eq \&Image::ExifTool::Sony::ProcessEnciphered));
+            $$table{PROCESS_PROC} eq \&Image::ExifTool::Sony::ProcessEnciphered) or
+            $$table{VARS} and $$table{VARS}{IS_BINARY});
         if ($$vars{ID_LABEL} or $processBinaryData) {
             my $s = $$table{FORMAT} ? Image::ExifTool::FormatSize($$table{FORMAT}) || 1 : 1;
             $binaryTable = 1;
