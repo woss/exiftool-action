@@ -1,0 +1,54 @@
+name: Sync repo
+
+on:
+ workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: write
+  contents: read
+  security-events: write
+
+jobs:
+  sync-original:
+    name: Sync the exiftool repo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: sync the repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.email "daniel-robot@woss.io"
+          git config --global user.name "Woss Bot"
+          rm -rf exiftool_git
+          git clone https://github.com/exiftool/exiftool.git exiftool_git
+          rm -rf exiftool_git/.git
+          cd ./exiftool_git || exit
+          perl Makefile.PL
+          make
+          make test
+
+          cd ../
+          mkdir -p ./exiftool
+          cp -R ./exiftool_git/lib ./exiftool_git/exiftool ./exiftool
+          chmod +x ./exiftool/exiftool
+
+          rm -rf exiftool_git
+          VERSION=$(./exiftool/exiftool -ver)
+          echo "Version: ${VERSION}"
+          git checkout -b "v${VERSION}"
+          git add exiftool
+          git commit -m "Update exiftool to version ${VERSION}"
+          git push --set-upstream origin "v${VERSION}"
+
+          gh pr create --assignee woss --body "" --title "Update exiftool to version ${VERSION}"
+
+      # - name: create pull request
+        # run:  gh pr create --assignee woss --body "" --title "Update exiftool to version 13.07"

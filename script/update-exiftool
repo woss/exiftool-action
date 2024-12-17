@@ -20,3 +20,5 @@ git checkout -b "v${VERSION}"
 git add exiftool
 git commit -m "Update exiftool to version ${VERSION}"
 git push --set-upstream origin "v${VERSION}"
+
+gh pr create --assignee woss --body "" --title "Update exiftool to version ${VERSION}"
