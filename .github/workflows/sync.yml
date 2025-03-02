@@ -2,7 +2,11 @@ name: Sync repo
 
 on:
  workflow_dispatch:
-
+  inputs:
+      name:
+        description: 'Branch'
+        required: true
+        default: 'main'
 permissions:
   contents: write
   pull-requests: write
