@@ -1,0 +1,62 @@
+name: Create Pull Request on Issue Creation
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-pull-request:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run update-exiftool
+        id: create-branch
+        run: |
+          rm -rf exiftool_git
+          git clone https://github.com/exiftool/exiftool.git exiftool_git
+          rm -rf exiftool_git/.git
+          cd ./exiftool_git || exit
+          perl Makefile.PL
+          make
+          make test
+
+          cd ../
+          mkdir -p ./exiftool
+          cp -R ./exiftool_git/lib ./exiftool_git/exiftool ./exiftool
+          chmod +x ./exiftool/exiftool
+
+          rm -rf exiftool_git
+          VERSION=$(./exiftool/exiftool -ver)
+          echo "Version: ${VERSION}"
+          git checkout -b "v${VERSION}"
+          git add exiftool
+          git commit -m "Update exiftool to version ${VERSION}"
+          git push --set-upstream origin "v${VERSION}"
+          echo "branchName=v${VERSION}" >> $GITHUB_OUTPUT
+
+
+      - name: Create Pull Request
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const branchName = '${{ steps.create-branch.outputs.branchName }}';
+
+            const title = `Fix for #${issue.number}: ${issue.title}`;
+            const body = `This pull request addresses the issue #${issue.number}.`;
+
+            const { data: pullRequest } = await github.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              head: branchName,
+              base: 'main'
+            });
+
+            console.log(`Pull Request created: ${pullRequest.html_url}`);
