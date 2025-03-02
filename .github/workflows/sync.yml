@@ -4,10 +4,8 @@ on:
  workflow_dispatch:
 
 permissions:
-  actions: read
-  checks: write
-  contents: read
-  security-events: write
+  contents: write
+  pull-requests: write
 
 jobs:
   sync-original:
@@ -16,14 +14,14 @@ jobs:
 
     steps:
       - name: Checkout
-        id: checkout
         uses: actions/checkout@v4
-        with:
-          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # - uses: actions4git/setup-git@v1
 
       - name: sync the repo
+        id: sync-original
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.email "daniel-robot@woss.io"
           git config --global user.name "Woss Bot"
@@ -47,8 +45,22 @@ jobs:
           git add exiftool
           git commit -m "Update exiftool to version ${VERSION}"
           git push --set-upstream origin "v${VERSION}"
+          echo "branchName=v${VERSION}" >> $GITHUB_OUTPUT
 
-          gh pr create --assignee woss --body "" --title "Update exiftool to version ${VERSION}"
+      - name: create pull request
+        run: gh pr create --assignee woss -B main -H ${{ steps.sync-original.outputs.branchName }} --title "Update exiftool to version ${{ steps.sync-original.outputs.branchName }}" --body "This PR updates the exiftool to version ${{ steps.sync-original.outputs.branchName }}."
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: create pull request
-        # run:  gh pr create --assignee woss --body "" --title "Update exiftool to version 13.07"
+      - name: merge pull request
+        run: gh pr merge ${{ steps.sync-original.outputs.branchName }} --merge --delete-branch
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: create tag
+        run: git tag -a "v${{ steps.sync-original.outputs.branchName }}" -m "Update exiftool to version ${{ steps.sync-original.outputs.branchName }}"
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
