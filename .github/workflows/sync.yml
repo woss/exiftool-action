@@ -78,3 +78,15 @@ jobs:
           gh release create ${{ steps.sync-original.outputs.branchName }} --generate-notes
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tell to world
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = await fetch("${{secrets.N8N_WEBHOOK_URL}}", {
+              method: 'post',
+            body: JSON.stringify({tag: '${{steps.sync-original.outputs.branchName}}'}),
+              headers: {'Content-Type': 'application/json','x-api-token':'${{ secrets.N8N_WEBHOOK_TOKEN }}'}
+            });
+            const data = await response.json();
+            console.log('data', data)
