@@ -65,7 +65,7 @@ use Image::ExifTool::Exif;
 use Image::ExifTool::GPS;
 use Image::ExifTool::XMP;
 
-$VERSION = '4.46';
+$VERSION = '4.48';
 
 sub LensIDConv($$$);
 sub ProcessNikonAVI($$$);
@@ -1691,14 +1691,15 @@ my %cropHiSpeed = ( #IB
     4 => '3:2 Crop', # (1.2x, ref 36)
     6 => '16:9 Crop',
     8 => '2.7x Crop', #36 (D4/D500)
-    9 => 'DX Movie Crop', # (DX during movie recording, Large)
+    9 => 'DX Movie 16:9 Crop', # (DX during movie recording, Large)
     10 => '1.3x Movie Crop', #36 (D4/D500)
     11 => 'FX Uncropped',
     12 => 'DX Uncropped',
     13 => '2.8x Movie Crop', #28 (D5/D6)    5584/1936
     14 => '1.4x Movie Crop', #28 (D5/D6)    5584/3856
     15 => '1.5x Movie Crop', #36 (D4/D500)  5600/3872
-    17 => '1:1 Crop',
+    17 => 'FX 1:1 Crop',
+    18 => 'DX 1:1 Crop',
     OTHER => sub {
         my ($val, $inv, $conv) = @_;
         return undef if $inv;
@@ -5856,6 +5857,7 @@ my %nikonFocalConversions = (
             46 => 'Nikkor Z 135mm f/1.8 S Plena', #28
             47 => 'Nikkor Z 35mm f/1.2 S', #28
             48 => 'Nikkor Z 28-400mm f/4-8 VR', #30
+            49 => 'Nikkor Z 28-135mm f/4 PZ', #28
             51 => 'Nikkor Z 35mm f/1.4', #28
             52 => 'Nikkor Z 50mm f/1.4', #28
             2305 => 'Laowa FFII 10mm F2.8 C&D Dreamer', #30
@@ -12791,7 +12793,7 @@ my %nikonFocalConversions = (
         Name => 'UnknownInfo',
         SubDirectory => { TagTable => 'Image::ExifTool::Nikon::UnknownInfo' },
     },
-    # 0x200002d - int16u[3]: "512 0 0"
+    # 0x200002d - int16u[3]: "512 0 0", "512 1 14", "512 3 10"
     0x2000032 => {
         Name => 'UnknownInfo2',
         SubDirectory => { TagTable => 'Image::ExifTool::Nikon::UnknownInfo2' },
@@ -12804,10 +12806,12 @@ my %nikonFocalConversions = (
     # 0x200003f - rational64s[2]: "0 0"
     # 0x2000042 - undef[6]: "0100\x03\0"
     # 0x2000043 - undef[12]: all zeros
+    # 0x200004d - undef[84]: "0100\0\0\0\0x020100\0\0\0\x010100\0\0\0\x05\0\0\..."
     0x200004e => {
         Name => 'NikonSettings',
         SubDirectory => { TagTable => 'Image::ExifTool::NikonSettings::Main' },
     },
+    # 0x2000055 - undef[8]: "0100\x01\0\0\0"
     0x2000083 => {
         Name => 'LensType',
         # credit to Tom Christiansen (ref 7) for figuring this out...
@@ -13011,7 +13015,11 @@ my %nikonFocalConversions = (
         Condition => '$$valPt =~ /^040[012]/',
         SubDirectory => { TagTable => 'Image::ExifTool::Nikon::AFInfo2V0400' },
     }],
-    # 0x20000c0 - undef[8]
+    # 0x20000c0 - undef[8]:
+    #    34 01 0c 00 90 01 0c 00
+    #    34 01 0c 00 9c 01 0c 00
+    #    3c 01 0c 00 9c 01 0c 00
+    #    3c 01 0c 00 a8 01 0c 00
     0x20000c3 => {
         Name => 'BarometerInfo',
         SubDirectory => {
