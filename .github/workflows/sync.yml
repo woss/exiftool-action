@@ -59,9 +59,8 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - name: git pull
+        run: git pull
 
       - name: create tag
         run: |
@@ -70,8 +69,8 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: git pull
+        run: git pull
 
       - name: generate release
         run: |
