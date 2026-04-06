@@ -87,5 +87,10 @@ jobs:
             body: JSON.stringify({tag: '${{steps.sync-original.outputs.branchName}}'}),
               headers: {'Content-Type': 'application/json','x-api-token':'${{ secrets.N8N_WEBHOOK_TOKEN }}'}
             });
-            const data = await response.json();
-            console.log('data', data)
+            if(response.ok){
+
+              const data = await response.json();
+              console.log('data', data)
+            } else {
+              console.error('error', await response.text())
+            }
