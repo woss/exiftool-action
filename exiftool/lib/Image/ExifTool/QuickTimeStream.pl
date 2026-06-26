@@ -111,7 +111,7 @@ my %insvLimit = (
         The tags below are extracted from timed metadata in QuickTime and other
         formats of video files when the ExtractEmbedded option is used.  Although
         most of these tags are combined into the single table below, ExifTool
-        currently reads 122 different types of timed GPS metadata from video files.
+        currently reads 124 different types of timed GPS metadata.
     },
     GPSLatitude  => { PrintConv => 'Image::ExifTool::GPS::ToDMS($self, $val, 1, "N")', RawConv => '$$self{FoundGPSLatitude} = 1; $val' },
     GPSLongitude => { PrintConv => 'Image::ExifTool::GPS::ToDMS($self, $val, 1, "E")' },
@@ -848,6 +848,16 @@ my %insvLimit = (
     },
 );
 
+# found in live photo .mov files
+%Image::ExifTool::QuickTime::sdpd = (
+    PROCESS_PROC => \&Image::ExifTool::QuickTime::ProcessMOV,
+    sdpi => {
+        Name => 'SDPI',
+        Unknown => 1,
+        Format => 'int32u',
+    },
+);
+
 #------------------------------------------------------------------------------
 # Convert unsigned 32-bit integer to signed
 # Inputs: <none> (uses value in $_)
@@ -897,6 +907,7 @@ sub SaveMetaKeys($$$)
             last if $len < 8 or $pos + $len > $end;
             my $tag = substr($$dataPt, $pos + 4, 4);
             $pos += 8;  $len -= 8;
+            my $base = $$dirInfo{Base} + $pos;
             my $val = substr($$dataPt, $pos, $len);
             $pos += $len;
             my $str;
@@ -920,14 +931,13 @@ sub SaveMetaKeys($$$)
                     }
                     $str .= " ($format)" if $verbose and defined $str;
                 }
-            } elsif ($tag eq 'setu') {
+            } else {
                 $et->HandleTag($tagTbl, $tag, undef,
                     DataPt => \$val,
-                    Base => $$dirInfo{Base} + $pos - $len,
+                    Base => $base,
                 );
+                next;
             }
-            # also seen:
-            # 'sdpd' - box containing 'sdpi' atom with value 4 zeros
             if ($verbose > 1) {
                 if (defined $str) {
                     $str =~ tr/\x00-\x1f\x7f-\xff/./;
@@ -936,7 +946,7 @@ sub SaveMetaKeys($$$)
                     $str = '';
                 }
                 $et->VPrint(1, $$et{INDENT}."- Tag '".PrintableTagID($tag,2)."' ($len bytes)$str\n");
-                $et->VerboseDump(\$val);
+                $et->VerboseDump(\$val, Base => $base);
             }
         }
         if (defined $tagID and defined $format) {

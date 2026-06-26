@@ -88,7 +88,7 @@ sub ProcessCTMD($$$);
 sub ProcessExifInfo($$$);
 sub SwapWords($);
 
-$VERSION = '5.05';
+$VERSION = '5.07';
 
 # Note: Removed 'USM' from 'L' lenses since it is redundant - PH
 # (or is it?  Ref 32 shows 5 non-USM L-type lenses)
@@ -646,9 +646,10 @@ $VERSION = '5.05';
    '61182.63' => 'Canon RF 24mm F1.4 L VCM', #42
    '61182.64' => 'Canon RF 20mm F1.4 L VCM', #42
    '61182.65' => 'Canon RF 85mm F1.4 L VCM', #github350
-   '61182.66' => 'Canon RF 45mm F1.2 STM', #42
-   '61182.67' => 'Canon RF 7-14mm F2.8-3.5 L FISHEYE STM', #42
-   '61182.68' => 'Canon RF 14mm F1.4 L VCM', #42
+   '61182.66' => 'Canon RF 20-50mm F4 L IS USM PZ', #42
+   '61182.67' => 'Canon RF 45mm F1.2 STM', #42
+   '61182.68' => 'Canon RF 7-14mm F2.8-3.5 L FISHEYE STM', #42
+   '61182.69' => 'Canon RF 14mm F1.4 L VCM', #42
     65535 => 'n/a',
 );
 
@@ -2031,7 +2032,7 @@ my %offOn = ( 0 => 'Off', 1 => 'On' );
             SubDirectory => { TagTable => 'Image::ExifTool::Canon::ColorData10' },
         },
         {   # (int16u[3973]) - R3 ref IB
-            Condition => '($count == 3973 or $count == 3778) and $$valPt !~ /^\x41\0/',
+            Condition => '($count == 3973 or $count == 3778) and $$valPt =~ /^[\0-\x40]/',
             Name => 'ColorData11',
             SubDirectory => { TagTable => 'Image::ExifTool::Canon::ColorData11' },
         },
@@ -7132,6 +7133,7 @@ my %ciMaxFocal = (
             326 => 'Canon RF 24mm F1.4 L VCM', #42
             327 => 'Canon RF 20mm F1.4 L VCM', #42
             328 => 'Canon RF 85mm F1.4 L VCM', #42/github350
+            329 => 'Canon RF 20-50mm F4 L IS USM PZ', #42
             330 => 'Canon RF 45mm F1.2 STM', #42
             331 => 'Canon RF 7-14mm F2.8-3.5 L FISHEYE STM', #42
             332 => 'Canon RF 14mm F1.4 L VCM', #42
@@ -8729,18 +8731,18 @@ my %ciMaxFocal = (
     0xa9 => { Name => 'ColorTempUnknown10', Unknown => 1 },
     0xaa => { Name => 'WB_RGGBLevelsUnknown11',  Format => 'int16s[4]', Unknown => 1 },
     0xae => { Name => 'ColorTempUnknown11', Unknown => 1 },
-    0xaf => { Name => 'WB_RGGBLevelsUnknown11',  Format => 'int16s[4]', Unknown => 1 },
-    0xb3 => { Name => 'ColorTempUnknown11', Unknown => 1 },
-    0xb4 => { Name => 'WB_RGGBLevelsUnknown12',  Format => 'int16s[4]', Unknown => 1 },
-    0xb8 => { Name => 'ColorTempUnknown12', Unknown => 1 },
-    0xb9 => { Name => 'WB_RGGBLevelsUnknown13',  Format => 'int16s[4]', Unknown => 1 },
-    0xbd => { Name => 'ColorTempUnknown13', Unknown => 1 },
-    0xbe => { Name => 'WB_RGGBLevelsUnknown14',  Format => 'int16s[4]', Unknown => 1 },
-    0xc2 => { Name => 'ColorTempUnknown14', Unknown => 1 },
-    0xc3 => { Name => 'WB_RGGBLevelsUnknown15',  Format => 'int16s[4]', Unknown => 1 },
-    0xc7 => { Name => 'ColorTempUnknown15', Unknown => 1 },
-    0xc8 => { Name => 'WB_RGGBLevelsUnknown16',  Format => 'int16s[4]', Unknown => 1 },
-    0xcc => { Name => 'ColorTempUnknown16', Unknown => 1 },
+    0xaf => { Name => 'WB_RGGBLevelsUnknown12',  Format => 'int16s[4]', Unknown => 1 },
+    0xb3 => { Name => 'ColorTempUnknown12', Unknown => 1 },
+    0xb4 => { Name => 'WB_RGGBLevelsUnknown13',  Format => 'int16s[4]', Unknown => 1 },
+    0xb8 => { Name => 'ColorTempUnknown13', Unknown => 1 },
+    0xb9 => { Name => 'WB_RGGBLevelsUnknown14',  Format => 'int16s[4]', Unknown => 1 },
+    0xbd => { Name => 'ColorTempUnknown14', Unknown => 1 },
+    0xbe => { Name => 'WB_RGGBLevelsUnknown15',  Format => 'int16s[4]', Unknown => 1 },
+    0xc2 => { Name => 'ColorTempUnknown15', Unknown => 1 },
+    0xc3 => { Name => 'WB_RGGBLevelsUnknown16',  Format => 'int16s[4]', Unknown => 1 },
+    0xc7 => { Name => 'ColorTempUnknown16', Unknown => 1 },
+    0xc8 => { Name => 'WB_RGGBLevelsUnknown17',  Format => 'int16s[4]', Unknown => 1 },
+    0xcc => { Name => 'ColorTempUnknown17', Unknown => 1 },
     0xcd => { Name => 'WB_RGGBLevelsDaylight',   Format => 'int16s[4]' },
     0xd1 => 'ColorTempDaylight',
     0xd2 => { Name => 'WB_RGGBLevelsShade',      Format => 'int16s[4]' },
@@ -8755,28 +8757,28 @@ my %ciMaxFocal = (
     0xea => 'ColorTempKelvin',
     0xeb => { Name => 'WB_RGGBLevelsFlash',      Format => 'int16s[4]' },
     0xef => 'ColorTempFlash',
-    0xf0 => { Name => 'WB_RGGBLevelsUnknown17',  Format => 'int16s[4]', Unknown => 1 },
-    0xf4 => { Name => 'ColorTempUnknown17', Unknown => 1 },
-    0xf5 => { Name => 'WB_RGGBLevelsUnknown18',  Format => 'int16s[4]', Unknown => 1 },
-    0xf9 => { Name => 'ColorTempUnknown18', Unknown => 1 },
-    0xfa => { Name => 'WB_RGGBLevelsUnknown19',  Format => 'int16s[4]', Unknown => 1 },
-    0xfe => { Name => 'ColorTempUnknown19', Unknown => 1 },
-    0xff => { Name => 'WB_RGGBLevelsUnknown20',  Format => 'int16s[4]', Unknown => 1 },
-    0x103 => { Name => 'ColorTempUnknown20', Unknown => 1 },
-    0x104 => { Name => 'WB_RGGBLevelsUnknown21',  Format => 'int16s[4]', Unknown => 1 },
-    0x108 => { Name => 'ColorTempUnknown21', Unknown => 1 },
-    0x109 => { Name => 'WB_RGGBLevelsUnknown22',  Format => 'int16s[4]', Unknown => 1 },
-    0x10d => { Name => 'ColorTempUnknown22', Unknown => 1 },
-    0x10e => { Name => 'WB_RGGBLevelsUnknown23',  Format => 'int16s[4]', Unknown => 1 },
-    0x112 => { Name => 'ColorTempUnknown23', Unknown => 1 },
-    0x113 => { Name => 'WB_RGGBLevelsUnknown24',  Format => 'int16s[4]', Unknown => 1 },
-    0x117 => { Name => 'ColorTempUnknown24', Unknown => 1 },
-    0x118 => { Name => 'WB_RGGBLevelsUnknown25',  Format => 'int16s[4]', Unknown => 1 },
-    0x11c => { Name => 'ColorTempUnknown25', Unknown => 1 },
-    0x11d => { Name => 'WB_RGGBLevelsUnknown26',  Format => 'int16s[4]', Unknown => 1 },
-    0x121 => { Name => 'ColorTempUnknown26', Unknown => 1 },
-    0x122 => { Name => 'WB_RGGBLevelsUnknown27',  Format => 'int16s[4]', Unknown => 1 },
-    0x126 => { Name => 'ColorTempUnknown27', Unknown => 1 },
+    0xf0 => { Name => 'WB_RGGBLevelsUnknown18',  Format => 'int16s[4]', Unknown => 1 },
+    0xf4 => { Name => 'ColorTempUnknown18', Unknown => 1 },
+    0xf5 => { Name => 'WB_RGGBLevelsUnknown19',  Format => 'int16s[4]', Unknown => 1 },
+    0xf9 => { Name => 'ColorTempUnknown19', Unknown => 1 },
+    0xfa => { Name => 'WB_RGGBLevelsUnknown20',  Format => 'int16s[4]', Unknown => 1 },
+    0xfe => { Name => 'ColorTempUnknown20', Unknown => 1 },
+    0xff => { Name => 'WB_RGGBLevelsUnknown21',  Format => 'int16s[4]', Unknown => 1 },
+    0x103 => { Name => 'ColorTempUnknown21', Unknown => 1 },
+    0x104 => { Name => 'WB_RGGBLevelsUnknown22',  Format => 'int16s[4]', Unknown => 1 },
+    0x108 => { Name => 'ColorTempUnknown22', Unknown => 1 },
+    0x109 => { Name => 'WB_RGGBLevelsUnknown23',  Format => 'int16s[4]', Unknown => 1 },
+    0x10d => { Name => 'ColorTempUnknown23', Unknown => 1 },
+    0x10e => { Name => 'WB_RGGBLevelsUnknown24',  Format => 'int16s[4]', Unknown => 1 },
+    0x112 => { Name => 'ColorTempUnknown24', Unknown => 1 },
+    0x113 => { Name => 'WB_RGGBLevelsUnknown25',  Format => 'int16s[4]', Unknown => 1 },
+    0x117 => { Name => 'ColorTempUnknown25', Unknown => 1 },
+    0x118 => { Name => 'WB_RGGBLevelsUnknown26',  Format => 'int16s[4]', Unknown => 1 },
+    0x11c => { Name => 'ColorTempUnknown26', Unknown => 1 },
+    0x11d => { Name => 'WB_RGGBLevelsUnknown27',  Format => 'int16s[4]', Unknown => 1 },
+    0x121 => { Name => 'ColorTempUnknown27', Unknown => 1 },
+    0x122 => { Name => 'WB_RGGBLevelsUnknown28',  Format => 'int16s[4]', Unknown => 1 },
+    0x126 => { Name => 'ColorTempUnknown28', Unknown => 1 },
     0x12c => {
         Name => 'ColorCalib',
         Format => 'undef[120]',
@@ -10267,6 +10269,19 @@ sub PrintLensID(@)
         }
         @matches = @likely unless @matches;
         @matches = @maybe unless @matches;
+        # use LensModel focal length and aperture if necessary and available
+        if (@matches > 1 and $lensModel and 
+            $lensModel =~ /(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?) ?mm ?f\/?(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)/i)
+        {
+            my ($mm, $fstop) = ($1, $2);
+            my @best;
+            foreach $lens (@matches) {
+                next unless $lens =~ /(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?) ?mm ?f\/?(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)/i;
+                push @best, $lens if $mm eq $1 and $fstop eq $2;
+            }
+            @matches = @best if @best;
+        }
+        
         Image::ExifTool::Exif::MatchLensModel(\@matches, $lensModel);
         return join(' or ', @matches) if @matches;
     } elsif ($lensModel and $lensModel =~ /\d/) {

@@ -29,7 +29,7 @@ use vars qw($VERSION $RELEASE @ISA @EXPORT_OK %EXPORT_TAGS $AUTOLOAD @fileTypes
             %jpegMarker %specialTags %fileTypeLookup $testLen $exeDir
             %static_vars $advFmtSelf $configFile @configFiles $noConfig);
 
-$VERSION = '13.54';
+$VERSION = '13.59';
 $RELEASE = '';
 @ISA = qw(Exporter);
 %EXPORT_TAGS = (
@@ -121,6 +121,7 @@ sub CopyFileAttrs($$$);
 sub TimeNow(;$$);
 sub InverseDateTime($$;$$);
 sub NewGUID();
+sub NewUUID();
 sub MakeTiffHeader($$$$;$$);
 
 # other subroutine definitions
@@ -152,12 +153,13 @@ sub ReadValue($$$;$$$);
     APE::NewHeader APE::OldHeader Audible MPC MPEG::Audio MPEG::Video MPEG::Xing
     M2TS QuickTime QuickTime::ImageFile QuickTime::Stream QuickTime::Tags360Fly
     Matroska Matroska::StdTag MOI MXF DV Flash Flash::FLV Real::Media
-    Real::Audio Real::Metafile Red RIFF AIFF ASF TNEF WTV DICOM FITS XISF MIE
-    JSON HTML XMP::SVG Palm Palm::MOBI Palm::EXTH Torrent EXE EXE::PEVersion
-    EXE::PEString EXE::DebugRSDS EXE::DebugNB10 EXE::Misc EXE::MachO EXE::PEF
-    EXE::ELF EXE::AR EXE::CHM LNK LNK::INI PCAP Font VCard Text VCard::VCalendar
-    VCard::VNote RSRC Rawzor ZIP ZIP::GZIP ZIP::RAR ZIP::RAR5 RTF OOXML iWork
-    ISO FLIR::AFF FLIR::FPF MacOS MacOS::MDItem FlashPix::DocTable
+    Real::Audio Real::Metafile Red RIFF AIFF ASF TNEF WTV DICOM Garmin::FIT
+    FITS XISF MIE JSON HTML XMP::SVG Palm Palm::MOBI Palm::EXTH Torrent EXE
+    EXE::PEVersion EXE::PEString EXE::DebugRSDS EXE::DebugNB10 EXE::Misc
+    EXE::MachO EXE::PEF EXE::ELF EXE::AR EXE::CHM LNK LNK::INI PCAP Font VCard
+    Text VCard::VCalendar VCard::VNote RSRC Rawzor ZIP ZIP::GZIP ZIP::RAR
+    ZIP::RAR5 RTF OOXML iWork ISO FLIR::AFF FLIR::FPF MacOS MacOS::MDItem
+    FlashPix::DocTable
 );
 
 # alphabetical list of current Lang modules
@@ -196,7 +198,7 @@ $defaultLang = 'en';    # default language
 @fileTypes = qw(JPEG EXV CRW DR4 TIFF GIF MRW RAF X3F JP2 PNG MIE MIFF PS PDF
                 PSD XMP BMP WPG BPG PPM WV RIFF AIFF ASF MOV MPEG Real SWF PSP
                 FLV OGG FLAC APE MPC MKV MXF DV PMP IND PGF ICC ITC FLIR FLIF
-                FPF LFP HTML VRD RTF FITS XISF XCF DSF DSS QTIF FPX PICT ZIP
+                FPF LFP HTML VRD RTF FIT FITS XISF XCF DSF DSS QTIF FPX PICT ZIP
                 GZIP PLIST RAR 7Z BZ2 CZI TAR EXE EXR HDR CHM LNK WMF AVC DEX
                 DPX RAW Font JUMBF RSRC M2TS MacOS PHP PCX DCX DWF DWG DXF WTV
                 Torrent VCard LRI R3D AA PDB PFM2 MRC LIF JXL MOI ISO ALIAS PCAP
@@ -329,7 +331,7 @@ my %createTypes = map { $_ => 1 } qw(XMP ICC MIE VRD DR4 EXIF EXV);
     F4P  => ['MOV',  'Adobe Flash Player 9+ Protected'],
     F4V  => ['MOV',  'Adobe Flash Player 9+ Video'],
     FFF  => [['TIFF','FLIR'], 'Hasselblad Flexible File Format'],
-    FIT  =>  'FITS',
+    FIT  => ['FIT',  'Garmin Flexible and Interoperable data Transfer'], # (note that FITS files may also have .FIT extension)
     FITS => ['FITS', 'Flexible Image Transport System'],
     FLAC => ['FLAC', 'Free Lossless Audio Codec'],
     FLA  => ['FPX',  'Macromedia/Adobe Flash project'],
@@ -672,6 +674,7 @@ my %fileDescription = (
     EXR  => 'image/x-exr',
     EXV  => 'image/x-exv',
     FFF  => 'image/x-hasselblad-fff',
+    FIT  => 'application/fit',
     FITS => 'image/fits',
     FLA  => 'application/vnd.adobe.fla',
     FLAC => 'audio/flac',
@@ -873,6 +876,7 @@ my %moduleName = (
     EXV  => '',
     ICC  => 'ICC_Profile',
     IND  => 'InDesign',
+    FIT  => 'Garmin',
     FLV  => 'Flash',
     FPF  => 'FLIR',
     FPX  => 'FlashPix',
@@ -955,6 +959,7 @@ $testLen = 1024;    # number of bytes to read when testing for magic number
     EXIF => '(II\x2a\0|MM\0\x2a)',
     EXR  => '\x76\x2f\x31\x01',
     EXV  => '\xff\x01Exiv2',
+    FIT  => '.{8}\.FIT',
     FITS => 'SIMPLE  = {20}T',
     FLAC => '(fLaC|ID3)',
     FLIF => 'FLIF[0-\x6f][0-2]',
@@ -1869,8 +1874,6 @@ my %systemTagsNotes = (
         },
         PrintConv => 'sprintf("%.3g s", $val)',
     },
-    RAFVersion => { Notes => 'RAF file version number' },
-    RAFCompression => { PrintConv => { 0 => 'Uncompressed', 2 => 'Compressed' } }, # 1 maybe lossy?
     JPEGDigest => {
         Notes => q{
             an MD5 digest of the JPEG quantization tables is combined with the component
@@ -1914,6 +1917,15 @@ my %systemTagsNotes = (
             M=minute, S=second, N=file sequence number in hex, P=process ID in hex, and
             R=random hex number; without dashes with the -n option.  Not generated
             unless specifically requested or the API L<RequestAll|../ExifTool.html#RequestAll> option is set
+        },
+        PrintConv => '$val =~ s/(.{8})(.{4})(.{4})(.{4})/$1-$2-$3-$4-/; $val',
+    },
+    NewUUID => {
+        Groups => { 0 => 'ExifTool', 1 => 'ExifTool', 2 => 'Other' },
+        Notes => q{
+            generates a version 4 ("random"), variant 1 UUID as per RFC 9562, Section
+            5.4.  Not generated unless specifically requested or the API L<RequestAll|../ExifTool.html#RequestAll>
+            option is set
         },
         PrintConv => '$val =~ s/(.{8})(.{4})(.{4})(.{4})/$1-$2-$3-$4-/; $val',
     },
@@ -2362,7 +2374,7 @@ sub new
 #------------------------------------------------------------------------------
 # ImageInfo - return specified information from image file
 # Inputs: 0) [optional] ExifTool object reference
-#         1) filename, file reference, or scalar data reference
+#         1) filename, file reference, RAF reference, or scalar data reference
 #         2-N) list of tag names to find (or tag list reference or options reference)
 # Returns: reference to hash of tag/value pairs (with "Error" entry on error)
 # Notes:
@@ -2767,6 +2779,7 @@ sub ExtractInfo($;@)
         $self->FoundTag('ExifToolVersion', "$VERSION$RELEASE");
         $self->FoundTag('Now', $self->TimeNow()) if $$req{now} or $reqAll;
         $self->FoundTag('NewGUID', NewGUID()) if $$req{newguid} or $reqAll;
+        $self->FoundTag('NewUUID', NewUUID()) if $$req{newuuid} or $reqAll;
         # generate sequence number if necessary
         $self->FoundTag('FileSequence', $$self{FILE_SEQUENCE}) if $$req{filesequence} or $reqAll;
 
@@ -3384,7 +3397,7 @@ sub GetTagList($;$$$)
                       $$fileOrder{$a} <=> $$fileOrder{$b} } @$foundTags;
     } elsif ($sort eq 'Descr') {
         my $desc = $self->GetDescriptions($foundTags);
-        return sort { $$desc{$a} cmp $$desc{$b} } @$foundTags;
+        return sort { $$desc{$a} cmp $$desc{$b} or $a cmp $b } @$foundTags;
     } else {
         return sort { $$fileOrder{$a} <=> $$fileOrder{$b} } @$foundTags;
     }
@@ -3417,7 +3430,7 @@ sub GetRequestedTags($)
 #------------------------------------------------------------------------------
 # Get tag value
 # Inputs: 0) ExifTool object reference
-#         1) tag key or tag name with optional group names (case sensitive)
+#         1) tag key or tag name with optional group names (case insensitive)
 #            (or flattened tagInfo for getting field values, not part of public API)
 #         2) [optional] Value type: PrintConv, ValueConv, Both, Raw, Bin or Rational, the
 #            default is PrintConv or ValueConv, depending on the PrintConv option setting
@@ -3427,7 +3440,7 @@ sub GetRequestedTags($)
 sub GetValue($$;$)
 {
     local $_;
-    my ($self, $tag, $type) = @_; # plus: ($fieldValue)
+    my ($self, $tag, $type) = @_; # plus: ($rawFieldValue)
     my (@convTypes, $tagInfo, $valueConv, $both);
     my $rawValue = $$self{VALUE};
 
@@ -3435,6 +3448,10 @@ sub GetValue($$;$)
     if ($tag =~ /^(.*):(.+)/) {
         my ($gp, $tg) = ($1, $2);
         my ($i, $key, @keys);
+        unless (defined $$rawValue{$tg}) {
+            my ($match) = grep /^$tg$/i, keys %$rawValue;
+            $tg = $match if $match;
+        }
         # build list of tag keys in the order of priority (no index
         # is top priority, otherwise higher index is higher priority)
         for ($key=$tg, $i=$$self{DUPL_TAG}{$tg} || 0; ; --$i) {
@@ -3445,6 +3462,12 @@ sub GetValue($$;$)
         if (@keys) {
             $key = $self->GroupMatches($gp, \@keys);
             $tag = $key if $key;
+        }
+    } elsif (not defined $$rawValue{$tag} and $tag !~ / /) {
+        # fix case of tag name
+        unless (defined $$rawValue{$tag}) {
+            my ($match) = grep /^$tag$/i, keys %$rawValue;
+            $tag = $match if $match;
         }
     }
     # figure out what conversions to do
@@ -5397,7 +5420,7 @@ sub SetFoundTags($)
                 # put entry in return list even without value (value is undef)
                 $matches[0] = $byValue ? "$tag #(0)" : "$tag (0)";
                 # bogus file order entry to avoid warning if sorting in file order
-                $$self{FILE_ORDER}{$matches[0]} = 9999;
+                $$self{FILE_ORDER}{$matches[0]} = 999999999;
             }
             # copy over necessary information for tags from alternate files
             if ($g8) {
@@ -8948,7 +8971,6 @@ sub GetTagTable($)
             }
             %$tableName or warn("Can't find table $tableName\n"), return undef;
         }
-        no strict 'refs';
         $table = \%$tableName;
         use strict 'refs';
         &{$$table{INIT_TABLE}}($table) if $$table{INIT_TABLE};
@@ -9379,6 +9401,7 @@ sub HandleTag($$$$;%)
                 DataPos  => $parms{DataPos},
                 DirStart => $subdirStart,
                 DirLen   => $subdirLen,
+                DirID    => $tag,
                 Parent   => $parms{Parent},
                 Base     => $parms{Base},
                 Multi    => $$subdir{Multi},
@@ -10157,7 +10180,7 @@ sub ProcessBinaryData($$$)
 push @configFiles, $configFile if defined $configFile;
 until ($noConfig) {
     my $config = shift @configFiles;
-    my $file;
+    my ($file, $wasConfig);
     if (not defined $config) {
         $config = '.ExifTool_config';
         # get our home directory (HOMEDRIVE and HOMEPATH are used in Windows cmd shell)
@@ -10168,17 +10191,34 @@ until ($noConfig) {
     } else {
         length $config or last; # filename of "" disables configuration
         $file = $config;
+        $wasConfig = 1;
     }
-    # also check executable directory unless path is absolute
-    $exeDir = ($0 =~ /(.*)[\\\/]/) ? $1 : '.' unless defined $exeDir;
-    -r $file or $config =~ /^\// or $file = "$exeDir/$config";
-    unless (-r $file) {
-        warn("Config file not found\n") if defined $Image::ExifTool::configFile;
-        last;
+    if ($file eq '-') {
+        local *FH;
+        if (open(\*FH, '<-')) {
+            my $buff;
+            my $n = read(\*FH, $buff, 100000000);
+            close \*FH;
+            if ($n == 100000000) {
+                warn("Piped config file is too large\n");
+            } elsif ($n) {
+                eval $buff;
+            } else {
+                undef $@;
+            }
+        }
+    } else {
+        # also check executable directory unless path is absolute
+        $exeDir = ($0 =~ /(.*)[\\\/]/) ? $1 : '.' unless defined $exeDir;
+        -r $file or $config =~ /^\// or $file = "$exeDir/$config";
+        unless (-r $file) {
+            warn("Config file not found\n") if $wasConfig;
+            last;
+        }
+        unshift @INC, '.';      # look in current directory first
+        eval { require $file }; # load the config file
+        shift @INC;
     }
-    unshift @INC, '.';      # look in current directory first
-    eval { require $file }; # load the config file
-    shift @INC;
     # print warning (minus "Compilation failed" part)
     $@ and $_=$@, s/Compilation failed.*//s, warn $_;
     last unless @configFiles;
